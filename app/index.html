@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Le mie Finanze</title>
+    <link rel="stylesheet" href="/css/stile.css">
+  </head>
+  <body>
+    <main class="app">
+      <header class="app-header">
+        <div>
+          <!--<p class="eyebrow">Fase 3</p>-->
+          <h1>Le mie Finanze</h1>
+        </div>
+        <div class="header-actions">
+          <label class="export-month-label">
+            <!--Mese-->
+            <input type="month" id="export-month" class="compact-select export-month-input">
+          </label>
+          <button type="button" id="export-csv-btn" class="export-btn">Esporta mese</button>
+          <div id="backend-status" class="status">controllo...</div>
+        </div>
+      </header>
+
+      <section class="card">
+        <h2 id="form-title">Aggiungi transazione</h2>
+
+        <form id="transaction-form">
+          <fieldset class="type-toggle">
+            <legend>Tipo</legend>
+            <label>
+              <input type="radio" name="tipo" value="spesa" checked>
+              Spesa
+            </label>
+            <label>
+              <input type="radio" name="tipo" value="entrata">
+              Entrata
+            </label>
+          </fieldset>
+
+          <div class="form-grid">
+            <label>
+              Importo
+              <input type="number" id="importo" min="0" step="1" placeholder="0" required>
+            </label>
+
+            <label>
+              Mese
+              <input type="month" id="data" required>
+            </label>
+          </div>
+
+          <label>
+            Categoria
+            <select id="categoria" required>
+              <option value="">Seleziona categoria</option>
+              <option value="arbitro">Arbitro</option>
+              <option value="mangiare_fuori">Mangiare fuori</option>
+              <option value="eventi">Eventi</option>
+              <option value="spesa">Spesa</option>
+              <option value="benzina">Benzina</option>
+              <option value="capelli">Capelli</option>
+              <option value="internet">Internet</option>
+              <option value="vestiti">Vestiti</option>
+              <option value="igiene">Igiene</option>
+              <option value="moto">Moto</option>
+              <option value="acquisti online">Acquisti Online</option>
+              <option value="elettronica">Elettronica</option>
+              <option value="stipendio">Stipendio</option>
+              <option value="regalo">Regalo</option>
+              <option value="altro">Altro</option>
+            </select>
+          </label>
+
+          <label>
+            Note
+            <input type="text" id="nota" placeholder="opzionale">
+          </label>
+
+          <label class="checkbox-row">
+            <input type="checkbox" id="evitabile">
+            Spesa evitabile
+          </label>
+
+          <div class="form-actions">
+            <button type="submit" id="submit-btn" class="add-btn">Salva transazione</button>
+            <button type="button" id="cancel-edit-btn" class="secondary-btn hidden">Annulla modifica</button>
+          </div>
+        </form>
+
+        <p id="form-message" class="message" aria-live="polite"></p>
+      </section>
+
+      <section class="card">
+        <div class="section-heading">
+          <h2>Transazioni salvate</h2>
+          <button id="reload-btn" class="secondary-btn" type="button">Aggiorna</button>
+        </div>
+        <div id="transactions-list" class="transactions-list">
+          <div class="empty-state">Nessuna transazione ancora.</div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="section-heading">
+          <h2>Storico saldo</h2>
+          <select id="period-filter" class="compact-select">
+            <option value="scorso_mese">Scorso mese</option>
+            <option value="1m">Mese corrente</option>
+            <option value="3m">Ultimi 3 mesi</option>
+            <option value="6m" selected>Ultimi 6 mesi</option>
+            <option value="1y">Ultimo anno</option>
+            <option value="all">Tutto lo storico</option>
+          </select>
+        </div>
+        <p id="storico-period-label" class="storico-period-label"></p>
+
+        <div class="metrics">
+          <div class="metric">
+            <div class="metric-label">Entrate</div>
+            <div class="metric-value positive" id="tot-entrate">0</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Spese</div>
+            <div class="metric-value negative" id="tot-spese">0</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Saldo finale</div>
+            <div class="metric-value" id="saldo-finale">0</div>
+          </div>
+        </div>
+
+        <div class="chart-wrap">
+          <canvas id="balance-chart" width="720" height="280"></canvas>
+        </div>
+
+        <div class="section-heading categories-heading">
+          <h2>Spese per categoria</h2>
+          <span id="categories-total" class="categories-total"></span>
+        </div>
+        <div id="categories-list" class="categories-list">
+          <div class="empty-state">Nessuna spesa nel periodo.</div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="section-heading">
+          <h2>Obiettivi</h2>
+        </div>
+
+        <form id="objective-form">
+          <h3 id="objective-form-title" class="form-subtitle">Aggiungi obiettivo</h3>
+          <div class="form-grid">
+            <label>
+              Nome obiettivo
+              <input type="text" id="nome_obiettivo" placeholder="Es. Vacanza" required>
+            </label>
+            <label>
+              Costo stimato (€)
+              <input type="number" id="costo_obiettivo" min="0" step="1" placeholder="0" required>
+            </label>
+          </div>
+
+          <label>
+            Data target
+            <input type="month" id="data_target_obiettivo" required>
+          </label>
+
+          <div class="form-actions">
+            <button type="submit" id="objective-submit-btn" class="add-btn">Salva obiettivo</button>
+            <button type="button" id="cancel-objective-edit-btn" class="secondary-btn hidden">Annulla modifica</button>
+          </div>
+
+          <p id="objective-message" class="message" aria-live="polite"></p>
+        </form>
+
+        <div class="section-heading" style="margin-top: 18px;">
+          <h2 style="margin-bottom: 0;">Lista obiettivi</h2>
+        </div>
+        <div id="objectives-list" class="categories-list">
+          <div class="empty-state">Nessun obiettivo ancora.</div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="section-heading">
+          <h2>AI (analisi finanze)</h2>
+        </div>
+
+        <p style="color:#6a6a61;font-size:13px;margin-bottom:14px;">
+          Genera analisi e consigli usando SOLO i dati calcolati dal backend.
+        </p>
+
+        <div class="form-actions">
+          <button type="button" id="ai-run-btn" class="add-btn">Esegui analisi</button>
+        </div>
+
+        <p id="ai-message" class="message" aria-live="polite"></p>
+
+        <pre id="ai-output" style="white-space: pre-wrap; margin-top: 12px;"></pre>
+      </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <script src="/js/api.js"></script>
+    <script src="/js/app.js"></script>
+  </body>
+</html>
