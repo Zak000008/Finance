@@ -1,2 +1,3 @@
 # Fase 1 usa solo librerie standard di Python.
 # Non devi installare pacchetti esterni.
+psycopg2-binary

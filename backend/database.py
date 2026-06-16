@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import os
 import re
-import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_DB_PATH = PROJECT_ROOT / "data" / "finanze.sqlite"
 MONTH_PATTERN = re.compile(r"^\d{4}-\d{2}$")
 LEGACY_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -20,83 +21,80 @@ def normalize_categoria(value: str) -> str:
     return re.sub(r"_+", "_", cleaned)
 
 
-def migrate_normalize_categorie(connection: sqlite3.Connection) -> None:
-    rows = connection.execute("SELECT id, categoria FROM transazioni").fetchall()
+def migrate_normalize_categorie(cursor: Any) -> None:
+    cursor.execute("SELECT id, categoria FROM transazioni")
+    rows = cursor.fetchall()
     for row in rows:
         normalized = normalize_categoria(row["categoria"])
         if normalized != row["categoria"]:
-            connection.execute(
-                "UPDATE transazioni SET categoria = ? WHERE id = ?",
+            cursor.execute(
+                "UPDATE transazioni SET categoria = %s WHERE id = %s",
                 (normalized, row["id"]),
             )
 
 
-def get_db_path() -> Path:
-    custom_path = os.environ.get("FINANZE_DB_PATH")
-    if custom_path:
-        return Path(custom_path).expanduser().resolve()
-    return DEFAULT_DB_PATH
+def get_connection() -> Any:
+    db_url = os.environ.get("DATABASE_URL")
+    if not db_url:
+        raise ValueError("DATABASE_URL non impostata nelle variabili d'ambiente.")
+    return psycopg2.connect(db_url, cursor_factory=RealDictCursor)
 
 
-def get_connection() -> sqlite3.Connection:
-    db_path = get_db_path()
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-
-    connection = sqlite3.connect(db_path, timeout=30)
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA busy_timeout = 30000")
-    connection.execute("PRAGMA foreign_keys = ON")
-    connection.execute("PRAGMA journal_mode = WAL")
-    connection.execute("PRAGMA synchronous = NORMAL")
-    return connection
+@contextmanager
+def db_cursor():
+    connection = get_connection()
+    try:
+        with connection:
+            with connection.cursor() as cursor:
+                yield cursor
+    finally:
+        connection.close()
 
 
 def init_db() -> None:
-    with get_connection() as connection:
-        connection.execute(
+    with db_cursor() as cursor:
+        cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS transazioni (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 tipo TEXT NOT NULL CHECK (tipo IN ('entrata', 'spesa')),
                 importo REAL NOT NULL CHECK (importo >= 0),
                 data TEXT NOT NULL,
                 categoria TEXT NOT NULL,
                 nota TEXT DEFAULT '',
                 evitabile INTEGER NOT NULL DEFAULT 0 CHECK (evitabile IN (0, 1)),
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                created_at TEXT NOT NULL DEFAULT to_char(CURRENT_TIMESTAMP, 'YYYY-MM-DD HH24:MI:SS')
             )
             """
         )
-        connection.commit()
 
         # Modulo OBIETTIVI
-        connection.execute(
+        cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS obiettivi (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 nome TEXT NOT NULL,
                 costo REAL NOT NULL CHECK (costo >= 0),
                 data_target TEXT NOT NULL,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                created_at TEXT NOT NULL DEFAULT to_char(CURRENT_TIMESTAMP, 'YYYY-MM-DD HH24:MI:SS')
             )
             """
         )
 
         # Modulo AI: persistenza report
-        connection.execute(
+        cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS report_ai (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 periodo TEXT NOT NULL,
                 input_json TEXT NOT NULL,
                 output_json TEXT NOT NULL,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                created_at TEXT NOT NULL DEFAULT to_char(CURRENT_TIMESTAMP, 'YYYY-MM-DD HH24:MI:SS')
             )
             """
         )
 
-        migrate_normalize_categorie(connection)
-        connection.commit()
+        migrate_normalize_categorie(cursor)
 
 
 def validate_data_target(value: str) -> str:
@@ -135,30 +133,30 @@ def validate_obiettivo_payload(payload: dict[str, Any]) -> tuple[str, float, str
 def create_obiettivo(payload: dict[str, Any]) -> dict[str, Any]:
     nome, costo_float, normalized_target = validate_obiettivo_payload(payload)
 
-    with get_connection() as connection:
-        cursor = connection.execute(
+    with db_cursor() as cursor:
+        cursor.execute(
             """
             INSERT INTO obiettivi (nome, costo, data_target)
-            VALUES (?, ?, ?)
+            VALUES (%s, %s, %s) RETURNING id
             """,
             (nome, costo_float, normalized_target),
         )
-        connection.commit()
-        obiettivo_id = int(cursor.lastrowid)
+        obiettivo_id = cursor.fetchone()["id"]
 
     return get_obiettivo(obiettivo_id)  # type: ignore[return-value]
 
 
 def get_obiettivo(obiettivo_id: int) -> dict[str, Any] | None:
-    with get_connection() as connection:
-        row = connection.execute(
+    with db_cursor() as cursor:
+        cursor.execute(
             """
             SELECT id, nome, costo, data_target, created_at
             FROM obiettivi
-            WHERE id = ?
+            WHERE id = %s
             """,
             (obiettivo_id,),
-        ).fetchone()
+        )
+        row = cursor.fetchone()
 
     if not row:
         return None
@@ -166,14 +164,15 @@ def get_obiettivo(obiettivo_id: int) -> dict[str, Any] | None:
 
 
 def list_obiettivi() -> list[dict[str, Any]]:
-    with get_connection() as connection:
-        rows = connection.execute(
+    with db_cursor() as cursor:
+        cursor.execute(
             """
             SELECT id, nome, costo, data_target, created_at
             FROM obiettivi
             ORDER BY data_target ASC, id DESC
             """
-        ).fetchall()
+        )
+        rows = cursor.fetchall()
 
     return [dict(row) for row in rows]
 
@@ -181,66 +180,62 @@ def list_obiettivi() -> list[dict[str, Any]]:
 def update_obiettivo(obiettivo_id: int, payload: dict[str, Any]) -> dict[str, Any] | None:
     nome, costo_float, normalized_target = validate_obiettivo_payload(payload)
 
-    with get_connection() as connection:
-        cursor = connection.execute(
+    with db_cursor() as cursor:
+        cursor.execute(
             """
             UPDATE obiettivi
-            SET nome = ?, costo = ?, data_target = ?
-            WHERE id = ?
+            SET nome = %s, costo = %s, data_target = %s
+            WHERE id = %s
             """,
             (nome, costo_float, normalized_target, obiettivo_id),
         )
-        connection.commit()
+        rowcount = cursor.rowcount
 
-    if cursor.rowcount == 0:
+    if rowcount == 0:
         return None
 
     return get_obiettivo(obiettivo_id)
 
 
 def delete_obiettivo(obiettivo_id: int) -> bool:
-    with get_connection() as connection:
-        cursor = connection.execute(
-            "DELETE FROM obiettivi WHERE id = ?",
+    with db_cursor() as cursor:
+        cursor.execute(
+            "DELETE FROM obiettivi WHERE id = %s",
             (obiettivo_id,),
         )
-        connection.commit()
+        rowcount = cursor.rowcount
 
-    return cursor.rowcount > 0
+    return rowcount > 0
 
 
 def create_report_ai(periodo: str, input_obj: dict[str, Any], output_obj: dict[str, Any]) -> None:
-    with get_connection() as connection:
-        connection.execute(
+    with db_cursor() as cursor:
+        cursor.execute(
             """
             INSERT INTO report_ai (periodo, input_json, output_json)
-            VALUES (?, ?, ?)
+            VALUES (%s, %s, %s)
             """,
             (periodo, json_dumps(input_obj), json_dumps(output_obj)),
         )
-        connection.commit()
 
 
 def json_dumps(obj: dict[str, Any]) -> str:
-    # Wrapper minimalista per evitare import extra nel punto sbagliato.
     import json as _json
-
     return _json.dumps(obj, ensure_ascii=False)
 
 
 def create_transazione(payload: dict[str, Any]) -> dict[str, Any]:
     values = validate_transazione_payload(payload)
 
-    with get_connection() as connection:
-        cursor = connection.execute(
+    with db_cursor() as cursor:
+        cursor.execute(
             """
             INSERT INTO transazioni (tipo, importo, data, categoria, nota, evitabile)
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s) RETURNING id
             """,
             values,
         )
-        connection.commit()
-        transazione_id = int(cursor.lastrowid)
+        transazione_id = cursor.fetchone()["id"]
 
     transazione = get_transazione(transazione_id)
     if transazione is None:
@@ -251,32 +246,32 @@ def create_transazione(payload: dict[str, Any]) -> dict[str, Any]:
 def update_transazione(transazione_id: int, payload: dict[str, Any]) -> dict[str, Any] | None:
     values = validate_transazione_payload(payload)
 
-    with get_connection() as connection:
-        cursor = connection.execute(
+    with db_cursor() as cursor:
+        cursor.execute(
             """
             UPDATE transazioni
-            SET tipo = ?, importo = ?, data = ?, categoria = ?, nota = ?, evitabile = ?
-            WHERE id = ?
+            SET tipo = %s, importo = %s, data = %s, categoria = %s, nota = %s, evitabile = %s
+            WHERE id = %s
             """,
             (*values, transazione_id),
         )
-        connection.commit()
+        rowcount = cursor.rowcount
 
-    if cursor.rowcount == 0:
+    if rowcount == 0:
         return None
 
     return get_transazione(transazione_id)
 
 
 def delete_transazione(transazione_id: int) -> bool:
-    with get_connection() as connection:
-        cursor = connection.execute(
-            "DELETE FROM transazioni WHERE id = ?",
+    with db_cursor() as cursor:
+        cursor.execute(
+            "DELETE FROM transazioni WHERE id = %s",
             (transazione_id,),
         )
-        connection.commit()
+        rowcount = cursor.rowcount
 
-    return cursor.rowcount > 0
+    return rowcount > 0
 
 
 def validate_transazione_payload(payload: dict[str, Any]) -> tuple[str, float, str, str, str, int]:
@@ -318,49 +313,52 @@ def validate_transazione_payload(payload: dict[str, Any]) -> tuple[str, float, s
 
 
 def get_transazione(transazione_id: int) -> dict[str, Any] | None:
-    with get_connection() as connection:
-        row = connection.execute(
+    with db_cursor() as cursor:
+        cursor.execute(
             """
             SELECT id, tipo, importo, data, categoria, nota, evitabile, created_at
             FROM transazioni
-            WHERE id = ?
+            WHERE id = %s
             """,
             (transazione_id,),
-        ).fetchone()
+        )
+        row = cursor.fetchone()
 
     return row_to_dict(row) if row else None
 
 
 def list_transazioni() -> list[dict[str, Any]]:
-    with get_connection() as connection:
-        rows = connection.execute(
+    with db_cursor() as cursor:
+        cursor.execute(
             """
             SELECT id, tipo, importo, data, categoria, nota, evitabile, created_at
             FROM transazioni
             ORDER BY id DESC
             """
-        ).fetchall()
+        )
+        rows = cursor.fetchall()
 
     return [row_to_dict(row) for row in rows]
 
 
 def list_transazioni_by_month(month: str) -> list[dict[str, Any]]:
     month_value = str(month).strip()[:7]
-    with get_connection() as connection:
-        rows = connection.execute(
+    with db_cursor() as cursor:
+        cursor.execute(
             """
             SELECT id, tipo, importo, data, categoria, nota, evitabile, created_at
             FROM transazioni
-            WHERE substr(data, 1, 7) = ?
+            WHERE substr(data, 1, 7) = %s
             ORDER BY id DESC
             """,
             (month_value,),
-        ).fetchall()
+        )
+        rows = cursor.fetchall()
 
     return [row_to_dict(row) for row in rows]
 
 
-def row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
+def row_to_dict(row: Any) -> dict[str, Any]:
     item = dict(row)
     item["evitabile"] = bool(item["evitabile"])
     return item
