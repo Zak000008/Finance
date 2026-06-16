@@ -2,27 +2,13 @@ services:
   - type: web
     name: finanze-personali
     runtime: python
-    plan: starter
-    region: frankfurt
+    plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: python backend/server.py
-    healthCheckPath: /api/health
     envVars:
-      - key: FINANZE_DB_PATH
-        value: /var/data/finanze.sqlite
-      - key: FINANZE_HOST
-        value: 0.0.0.0
-      - key: PYTHON_VERSION
-        value: 3.12.8
-      - key: FINANZE_AUTH_USER
-        value: finanze
+      - key: DATABASE_URL
+        sync: false
       - key: FINANZE_APP_PASSWORD
         sync: false
       - key: OPENROUTER_API_KEY
         sync: false
-      - key: OPENROUTER_MODEL
-        value: openrouter/free
-    disk:
-      name: finanze-data
-      mountPath: /var/data
-      sizeGB: 1
