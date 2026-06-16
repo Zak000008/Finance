@@ -37,7 +37,7 @@ def get_connection() -> Any:
     db_url = os.environ.get("DATABASE_URL")
     if not db_url:
         raise ValueError("DATABASE_URL non impostata nelle variabili d'ambiente.")
-    return psycopg2.connect(db_url, cursor_factory=RealDictCursor)
+    return psycopg2.connect(db_url.strip(), cursor_factory=RealDictCursor)
 
 
 @contextmanager
