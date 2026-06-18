@@ -100,7 +100,6 @@ transactionsList.addEventListener("click", async (event) => {
   }
 });
 
-// OBIETTIVI: submit + delete
 objectiveForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   objectiveMessage.textContent = "";
@@ -170,7 +169,6 @@ objectivesList.addEventListener("click", async (event) => {
   }
 });
 
-// AI: esegui analisi sul periodo selezionato nello storico
 aiRunBtn.addEventListener("click", async () => {
   aiMessage.textContent = "";
   aiMessage.className = "message";
@@ -289,7 +287,6 @@ function renderStorico(storico) {
 }
 
 function drawChart(punti) {
-  // Chart.js: distruggi grafico precedente per evitare duplicati
   if (saldoChart) {
     saldoChart.destroy();
     saldoChart = null;
@@ -315,7 +312,6 @@ function drawChart(punti) {
   const values = punti.map((punto) => Number(punto.saldo));
   const pointColors = punti.map((punto) => (punto.saldo >= 0 ? "#315c19" : "#9b2929"));
 
-  // Evita che Chart.js calcoli dimensioni strane su layout responsive
   chartCanvas.style.height = `${height}px`;
   chartCanvas.style.width = "100%";
 
@@ -448,7 +444,7 @@ function startObjectiveEdit(id) {
 
   nomeObiettivoInput.value = obiettivo.nome;
   costoObiettivoInput.value = obiettivo.costo;
-  dataTargetObiettivoInput.value = normalizeMonth(obiettivo.data_target);
+  dataTargetObiettivoInput.value = normalizeMonth(objective.data_target);
 
   objectiveMessage.textContent = "";
   objectiveMessage.className = "message";
@@ -478,7 +474,7 @@ function startEdit(id) {
 
   form.querySelector(`input[name="tipo"][value="${transazione.tipo}"]`).checked = true;
   document.getElementById("importo").value = transazione.importo;
-  dateInput.value = transazione.data;
+  dateInput.value = new Date(transazione.data).toISOString().split('T')[0];
   categorySelect.value = transazione.categoria;
   document.getElementById("nota").value = transazione.nota || "";
   document.getElementById("evitabile").checked = transazione.evitabile;
@@ -532,12 +528,13 @@ function ensureCategoryOption(value) {
 function formatEuro(value) {
   return new Intl.NumberFormat("it-IT", {
     style: "currency",
-    currency: "EUR"
+    currency: "EUR",
+    maximumFractionDigits: 0
   }).format(Number(value));
 }
 
 function formatDate(value) {
-  return formatMonth(value);
+  return new Date(value).toLocaleDateString('it-IT');
 }
 
 function formatMonth(value) {
