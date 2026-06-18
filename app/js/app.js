@@ -1,3 +1,5 @@
+document.getElementById('data').value = new Date().toISOString().split('T')[0];
+
 const form = document.getElementById("transaction-form");
 const message = document.getElementById("form-message");
 const transactionsList = document.getElementById("transactions-list");
