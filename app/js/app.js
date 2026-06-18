@@ -552,13 +552,11 @@ function formatMonth(value) {
 
 function currentMonth() {
   const oggi = new Date();
-  const meseScorso = new Date(
-    oggi.getFullYear(),
-    oggi.getMonth() - 1,
-    1
-  );
+  const yyyy = oggi.getFullYear();
+  const mm = String(oggi.getMonth() + 1).padStart(2, '0');
+  const dd = String(oggi.getDate()).padStart(2, '0');
 
-  return `${meseScorso.getFullYear()}-${String(meseScorso.getMonth() + 1).padStart(2, "0")}`;
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 function currentCalendarMonth() {
