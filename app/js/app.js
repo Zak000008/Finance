@@ -444,7 +444,7 @@ function startObjectiveEdit(id) {
 
   nomeObiettivoInput.value = obiettivo.nome;
   costoObiettivoInput.value = obiettivo.costo;
-  dataTargetObiettivoInput.value = normalizeMonth(objective.data_target);
+  dataTargetObiettivoInput.value = normalizeMonth(obiettivo.data_target);
 
   objectiveMessage.textContent = "";
   objectiveMessage.className = "message";
