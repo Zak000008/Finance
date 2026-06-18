@@ -1,5 +1,3 @@
-document.getElementById('data').value = new Date().toISOString().split('T')[0];
-
 const form = document.getElementById("transaction-form");
 const message = document.getElementById("form-message");
 const transactionsList = document.getElementById("transactions-list");
@@ -480,7 +478,7 @@ function startEdit(id) {
 
   form.querySelector(`input[name="tipo"][value="${transazione.tipo}"]`).checked = true;
   document.getElementById("importo").value = transazione.importo;
-  dateInput.value = normalizeMonth(transazione.data);
+  dateInput.value = transazione.data;
   categorySelect.value = transazione.categoria;
   document.getElementById("nota").value = transazione.nota || "";
   document.getElementById("evitabile").checked = transazione.evitabile;
